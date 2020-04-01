@@ -7,23 +7,15 @@ Created on Tue Mar 31 14:26:54 2020
 
 from bs4 import BeautifulSoup
 import requests as r
-import pandas as pd       
+import pandas as pd 
+"""
+
+"""
     
-"""https://www.meetup.com/find/tech/?pageToken=default%7C100&allMeetups=false
-&keywords=&radius=Infinity
-&userFreeform=Bucharest%2C+Romania&mcId=&mcName=Bucharest%2C+RO&lat=44.435394
-&lon=26.103302&sort=default&__fragment=simple_search&op="""
-"""
-https://www.meetup.com/find/tech/?pageToken=default%7C200&allMeetups=false
-&keywords=&radius=Infinity&userFreeform=Bucharest%2C+Romania&mcId=
-&mcName=Bucharest%2C+RO&lat=44.435394&lon=26.103302&sort=default&__fragment=simple_search&op=
-"""
+urlList=['https://www.meetup.com/find/tech/?pageToken=default%7C'+str(i*100)+'&radius=Infinity'
+         for i in range(1,11)]
 
-
-urlList=['https://www.meetup.com/find/tech/?pageToken=default%7C100&radius=Infinity'
-            ,'https://www.meetup.com/find/tech/?pageToken=default%7C200&radius=Infinity']
-
-linksFull=list()
+meetupLinksFull=list()
 
 for url in urlList:
 
@@ -31,11 +23,69 @@ for url in urlList:
     
     soup=BeautifulSoup(data)
     
-    linksList=list()
+    meetupLinksList=list()
     for link in soup.find_all('a',{"class":"groupCard--photo loading nametag-photo"}):
-        linksList.append(link.get('href'))
+        meetupLinksList.append(link.get('href'))
         
-    linksFull.extend(linksList)
+    meetupLinksFull.extend(meetupLinksList)
+     
+meetupsByCountry=list()
+
+for eventUrl in meetupLinksFull:
     
-links=pd.Series(linksFull)
-links=pd.Series(links.unique())
+    data=r.get(eventUrl).text
+
+    soup=BeautifulSoup(data)
+    
+    meetupCityLink=soup.find('a',{'class':'groupHomeHeaderInfo-cityLink'}).get('href')
+    meetupCountryCode=meetupCityLink.split('cities/')[1].split('/')[0]
+    
+    meetupsByCountry.append({'CountryCode':meetupCountryCode,'EventUrls':eventUrl})
+    
+dataMeetupsByCountry=pd.DataFrame.from_dict(meetupsByCountry)
+
+techMeeetupsFile='D:\\DataWork\\techMeetups.csv'
+
+dataMeetupsByCountry.to_csv(techMeeetupsFile,index=False)
+ 
+relevantMeetups=dataMeetupsByCountry.query('CountryCode in ["us","gb","ca","au","nz"]')
+
+   
+eventLinksFull=list()
+for meetupUrl in relevantMeetups['EventUrls']:
+    data=r.get(meetupUrl+'events/past').text
+    
+    soup=BeautifulSoup(data)
+    
+    eventLinksList=list()
+    for link in soup.find_all('a',{"class":"eventCard--link"}):
+        eventLinksList.append(link.get('href'))
+    
+    eventLinksFull.extend(eventLinksList)
+    
+eventLinksFile='D:\\DataWork\\eventLinks.csv'
+dataEventLinks=pd.DataFrame(eventLinksFull)
+dataEventLinks.to_csv(eventLinksFile,index=False)
+
+ 
+    
+eventDescriptions={}
+for eventUrl in eventLinksFull:
+    data=r.get('https://www.meetup.com/'+eventUrl).text
+    
+    soup=BeautifulSoup(data)
+    
+    descriptionEl=(soup
+                 .find('div',{'class':'event-description runningText'})
+                 )
+    
+    if descriptionEl:
+        description=descriptionEl.get_text(strip=True)
+    eventDescriptions={'Event':eventUrl,'description':description}
+
+
+dataEventDescriptions=pd.DataFrame(eventDescriptions,index=[0])
+
+jsonFile='D:\\DataWork\\meetupEventsDescriptions.json'
+
+dataEventDescriptions.to_json(jsonFile,orient='records',lines=True)
